@@ -1,0 +1,93 @@
+---
+- hosts: localhost
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: update Debian
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: update RedHat
+      ansible.builtin.yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+
+    - ansible.builtin.package:
+        name:
+          - wrk
+        state: present
+
+- hosts: master
+  tasks:
+    - name: remove whoami service
+      command: "docker service rm whoami"
+      become: yes
+      ignore_errors: True
+
+    - name: remove whoami service-2
+      command: "docker service rm whoami-2-reps"
+      become: yes
+      ignore_errors: True
+   
+    - name: remove whoami service-4
+      command: "docker service rm whoami-4-reps"
+      become: yes
+      ignore_errors: True
+
+    - name: remove whoami service-8
+      command: "docker service rm whoami-8-reps"
+      become: yes
+      ignore_errors: True
+
+    - name: create whoami service
+      command: "docker service create --name whoami --publish published=8080,target=80 --replicas 1 containous/whoami"
+      become: yes
+
+    - name: create whoami service
+      command: "docker service create --name whoami-2-reps --publish published=8081,target=80 --replicas 2 containous/whoami"
+      become: yes
+
+    - name: create whoami service
+      command: "docker service create --name whoami-4-reps --publish published=8082,target=80 --replicas 4 containous/whoami"
+      become: yes
+
+    - name: create whoami service
+      command: "docker service create --name whoami-8-reps --publish published=8083,target=80 --replicas 8 containous/whoami"
+      become: yes
+
+- hosts: localhost
+  gather_facts: yes
+  tasks:
+    - name: wrk with 1 replica
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars | first }}:8080"
+      register: wrk_output_1
+
+    - name: wrk with 2 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars | first }}:8081"
+      register: wrk_output_2
+
+    - name: wrk with 4 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars | first }}:8082"
+      register: wrk_output_4
+
+    - name: wrk with 8 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars | first }}:8083"
+      register: wrk_output_8
+
+    - name: wrk output with 1 replica
+      ansible.builtin.debug:
+        msg: '{{ wrk_output_1.stdout_lines | select("search", "Req/Sec") }}'
+
+    - name: wrk output with 2 replicas
+      ansible.builtin.debug:
+        msg: '{{ wrk_output_2.stdout_lines | select("search", "Req/Sec") }}'
+
+    - name: wrk output with 4 replicas
+      ansible.builtin.debug:
+        msg: '{{ wrk_output_4.stdout_lines | select("search", "Req/Sec") }}'
+
+    - name: wrk output with 8 replicas
+      ansible.builtin.debug:
+        msg: '{{ wrk_output_8.stdout_lines | select("search", "Req/Sec") }}'
+
